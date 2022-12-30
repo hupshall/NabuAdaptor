@@ -67,8 +67,8 @@
         /// </summary>
         public void StartServer()
         {
-            Logger.Log("Server running in TCP/IP mode");
-            Logger.Log("Waiting for connection");
+            Logger.Log("Server running in TCP/IP mode", Logger.Target.console);
+            Logger.Log("Waiting for connection", Logger.Target.console);
             this.tcpClient = GetListener(this.port).AcceptTcpClient();
             this.NabuStream = tcpClient.GetStream();
         }

@@ -4,12 +4,18 @@
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
+    using System.Net;
 
     /// <summary>
     /// Main implementation of the Nabu server, sits and waits for the nabu to request something and then fulfills that request.
     /// </summary>
     public class Server
     {
+        /// <summary>
+        /// WebClient to download pak files from cloud
+        /// </summary>
+        private static WebClient webClient;
+
         /// <summary>
         /// Nabu connection
         /// </summary>
@@ -25,6 +31,14 @@
         /// If you don't cache this, you'll be loading in the file and parsing everything for every individual segment.
         /// </summary>
         private List<NabuPak> cache;
+
+        static Server()
+        {
+            webClient = new WebClient();
+            webClient.Headers.Add("user-agent", "Nabu Network Adapter 1.0");
+            webClient.Headers.Add("Content-Type", "application/octet-stream");
+            webClient.Headers.Add("Content-Transfer-Encoding", "binary");
+        }
 
         /// <summary>
         ///  Initializes a new instance of the <see cref="Server"/> class.
@@ -80,7 +94,7 @@
                 // Start the server first
                 this.StartServer();
 
-                Logger.Log("Listening for Nabu");
+                Logger.Log("Listening for Nabu", Logger.Target.file);
                 while (this.connection != null && this.connection.Connected && !err)
                 {
                     byte b = this.ReadByte();
@@ -88,7 +102,7 @@
                     {
                         case 0x85: // Channel
                             this.WriteBytes(0x10, 0x6);
-                            Logger.Log($"Received Channel {this.ReadByte() + (this.ReadByte() << 8):X8}");
+                            Logger.Log($"Received Channel {this.ReadByte() + (this.ReadByte() << 8):X8}", Logger.Target.file);
                             this.WriteBytes(0xE4);
                             break;
                         case 0x84: // File Transfer
@@ -127,7 +141,7 @@
             }
             catch (Exception ex)
             {
-                Logger.Log($"Exception {ex.Message}");
+                Logger.Log($"Exception {ex.Message}", Logger.Target.file);
             }
             finally
             {
@@ -147,7 +161,8 @@
             int pakFileName = this.GetRequestedPakFile();
 
             string pakName = $"{pakFileName:X06}";
-            Logger.Log($"Nabu requesting file {pakFileName:X06} and segment {segmentNumber:X06}");
+            Logger.Log($"Nabu requesting file {pakFileName:X06} and segment {segmentNumber:X06}", Logger.Target.file);
+            Spinner.Turn(pakFileName);
 
             // ok
             this.WriteBytes(0xE4);
@@ -163,20 +178,44 @@
 
                 if (nabuPak == null)
                 {
-                    string pakFilename = Path.Combine(this.settings.Directory, $"{pakName}.pak");
-                    string nabuFilename = Path.Combine(this.settings.Directory, $"{pakName}.nabu");
-                                
-                    if (File.Exists(pakFilename))
+                    if (!string.IsNullOrWhiteSpace(settings.Url))
                     {
-                        nabuPak = SegmentManager.LoadSegments(pakName, File.ReadAllBytes(pakFilename));
-                        this.cache.Add(nabuPak);
-                    }
-                    else if (File.Exists(nabuFilename))
-                    {
-                        nabuPak = SegmentManager.CreateSegments(pakName, File.ReadAllBytes(nabuFilename));
+                        string downloadUrl = string.Empty;
+                        if (!settings.Url.EndsWith("/"))
+                        {
+                            downloadUrl = $"{settings.Url}/{pakName}.pak";
+                        }
+                        else
+                        {
+                            downloadUrl = $"{settings.Url}{pakName}.pak";
+                        }
+
+                        byte[] data = webClient.DownloadData(downloadUrl);
+                        nabuPak = SegmentManager.LoadSegments(pakName, data);
                         this.cache.Add(nabuPak);
                     }
                     else
+                    {
+                        string pakFilename = Path.Combine(this.settings.Directory, $"{pakName}.pak");
+                        string nabuFilename = Path.Combine(this.settings.Directory, $"{pakName}.nabu");
+
+                        if (File.Exists(pakFilename))
+                        {
+                            nabuPak = SegmentManager.LoadSegments(pakName, File.ReadAllBytes(pakFilename));
+                            this.cache.Add(nabuPak);
+                        }
+                        else if (File.Exists(nabuFilename))
+                        {
+                            nabuPak = SegmentManager.CreateSegments(pakName, File.ReadAllBytes(nabuFilename));
+                            this.cache.Add(nabuPak);
+                        }
+                        else
+                        {
+                            nabuPak = null;
+                        }
+                    }
+                    
+                    if (nabuPak == null)
                     {
                         if (pakFileName == 1)
                         {
@@ -318,7 +357,7 @@
                 }
                 else
                 {
-                    Logger.Log("Asking for channel");
+                    Logger.Log("Asking for channel", Logger.Target.file);
                     this.WriteBytes(0x9F, 0x10, 0xE1);
                 }
             }

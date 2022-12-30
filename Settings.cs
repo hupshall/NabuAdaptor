@@ -16,7 +16,8 @@
             start,
             port,
             mode,
-            path
+            path,
+            url
         }
 
         /// <summary>
@@ -47,6 +48,11 @@
         /// Gets the current directory, this is where we expect the files to be
         /// </summary>
         public string Directory { get; private set; }
+
+        /// <summary>
+        /// Gets the current URL (cloud based file retrieval)
+        /// </summary>
+        public string Url { get; private set; }
 
         /// <summary>
         ///  Initializes a new instance of the <see cref="Settings"/> class.
@@ -99,6 +105,11 @@
                             parseState = ParseState.start;
                             break;
 
+                        case ParseState.url:
+                            this.Url = argument;
+                            parseState = ParseState.start;
+                            break;
+
                         case ParseState.start:
                             switch (argument.ToLowerInvariant())
                             {
@@ -113,6 +124,9 @@
                                     break;
                                 case "-path":
                                     parseState = ParseState.path;
+                                    break;
+                                case "-url":
+                                    parseState = ParseState.url;
                                     break;
                                 default:
                                     this.DisplayHelp();
@@ -140,6 +154,15 @@
         {
             Console.WriteLine("Nabu console server");
             Console.WriteLine("");
+            Console.WriteLine("Parameters:");
+            Console.WriteLine("-mode -port -askforchannel -path -url");
+            Console.WriteLine();
+            Console.WriteLine("mode options: Serial, TCPIP - listen to serial port or TCPIP port");
+            Console.WriteLine("port: Which serial port or TCPIP port to listen to, examples would be COM4 or 12345");
+            Console.WriteLine("askforchannel - Just sets the flag to prompt the nabu for a channel.");
+            Console.WriteLine("path: Local path for files, defaults to current directory");
+            Console.WriteLine("url: url to cloud location - overrides path parameter if present, example https://www.mydomain.com/paklocation");
+            Console.WriteLine();
             Console.WriteLine("Serial Mode example:");
             Console.WriteLine("-Mode Serial -Port COM4");
             Console.WriteLine("");

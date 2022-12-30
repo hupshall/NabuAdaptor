@@ -203,7 +203,11 @@
 
             if (segmentData[segmentData.Length - 2] != crcData[0] || segmentData[segmentData.Length - 1] != crcData[1])
             {
-                Logger.Log($"CRC Bad, Expected 0x{crcData[0]}, 0x{crcData[1]}, but expected 0x{segmentData[segmentData.Length - 2]:X02}, 0x{segmentData[segmentData.Length - 1]}:X02");
+                Logger.Log($"CRC Bad, Calculated 0x{crcData[0]}, 0x{crcData[1]}, but read 0x{segmentData[segmentData.Length - 2]:X02}, 0x{segmentData[segmentData.Length - 1]:X02}", Logger.Target.file);
+
+                // Fix the CRC so that the nabu will load.
+                segmentData[segmentData.Length - 2] = crcData[0];
+                segmentData[segmentData.Length - 1] = crcData[1];
             }
         }
     }

@@ -49,7 +49,7 @@
         /// </summary>
         public void StartServer()
         {
-            Logger.Log("Server running in Serial mode");
+            Logger.Log("Server running in Serial mode", Logger.Target.console);
             this.serialPort?.Dispose();
             this.serialPort = new SerialPort();
             this.serialPort.PortName = this.ComPort;
