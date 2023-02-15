@@ -7,6 +7,9 @@
     /// </summary>
     public class Logger
     {
+        /// <summary>
+        /// Log event handler - used for UI
+        /// </summary>
         private EventHandler<string> logEvent;
 
         /// <summary>
@@ -15,7 +18,7 @@
         private const string logFile = "nabu.log";
 
         /// <summary>
-        /// 
+        /// Destination for the log
         /// </summary>
         public enum Target
         {
@@ -27,7 +30,7 @@
         }
 
         /// <summary>
-        /// 
+        /// Create an instance of the logger class with an event handler (used for UI scenarios)
         /// </summary>
         /// <param name="logEventHandler"></param>
         public Logger(EventHandler<string> logEventHandler)
@@ -36,7 +39,7 @@
         }
 
         /// <summary>
-        /// 
+        /// Create an instance of the logger class without an event handler
         /// </summary>
         public Logger()
         {

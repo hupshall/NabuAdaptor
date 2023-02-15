@@ -28,7 +28,7 @@
         private Logger logger;
 
         /// <summary>
-        /// 
+        /// Progress event handler (for UI scenarios)
         /// </summary>
         private EventHandler<ProgressEventArgs> progress;
 
@@ -150,11 +150,11 @@
                                 this.WriteBytes(0x10, 0x6);
                                 break;
                             case 0x20:
-                                // Send the main menu
+                                // Send the main menu - Prototype
                                 this.SendMainMenu();
                                 break;
                             case 0x21:
-                                // send specified menu
+                                // send specified menu - Prototype
                                 this.SendSubMenu();
                                 break;
                             case 0x1E:
@@ -188,56 +188,18 @@
 
         }
 
+        /// <summary>
+        /// Prototype for headless NabuAdaptor
+        /// </summary>
         private void SendSubMenu()
-        {
-            byte menu = this.ReadByte();
-
-            List<string> names = new List<string>();
-
-            // send down the specified menu
-            switch (menu)
-            {
-                case 0:
-                    IEnumerable<Cycle> cycles = from item in this.settings.Cycles where item.TargetType == Cycle.Target.Cycle select item;
-                    names = cycles.Select(cycle => cycle.Name).ToList();
-                    break;
-                case 1:
-                    IEnumerable<Cycle> programs = (from item in this.settings.Cycles where item.TargetType == Cycle.Target.Program select item).OrderBy(x => x.Name).ToList();
-                    names = programs.Select(cycle => cycle.Name).ToList();
-                    break;
-                case 2:
-                    IEnumerable<Cycle> arcade = (from item in this.settings.Cycles where item.TargetType == Cycle.Target.Arcade select item).OrderBy(x => x.Name).ToList();
-                    names = arcade.Select(cycle => cycle.Name).ToList();
-                    break;
-            }
-
-            if (names.Any())
-            {
-                foreach (string name in names)
-                {
-                    this.WriteBytes(this.LatinToAscii($"{name}\r"));
-                }
-            }
+        {          
         }
 
         /// <summary>
-        /// 
+        /// Prototype for headless NabuAdaptor
         /// </summary>
         private void SendMainMenu()
         {
-        }
-
-        public byte[] LatinToAscii(string str)
-        {
-            List<byte> data = new List<byte>();
-
-            foreach (byte b in System.Text.Encoding.UTF8.GetBytes(str.ToCharArray()))
-            {
-
-                data.Add(b);
-            }
-
-            return data.ToArray();
         }
 
         /// <summary>
@@ -440,6 +402,10 @@
             return (byte)this.connection.NabuStream.ReadByte();
         }
 
+        /// <summary>
+        /// Read a sequence of bytes from the stream
+        /// </summary>
+        /// <returns>read bytes</returns>
         private byte[] ReadBytes()
         {
             byte[] buffer = new byte[1024];
@@ -449,7 +415,7 @@
         }
 
         /// <summary>
-        /// 
+        /// tell the NABU to present the channel prompt
         /// </summary>
         /// <param name="askForChannel"></param>
         private void ConfigureChannel(bool askForChannel)

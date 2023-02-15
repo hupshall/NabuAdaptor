@@ -11,7 +11,7 @@
     public class Settings
     {
         /// <summary>
-        /// 
+        /// Default baud rate
         /// </summary>
         public static string defaultBaudRate = "111865";
 
@@ -41,7 +41,7 @@
         public bool AskForChannel { get; set; }
 
         /// <summary>
-        /// 
+        /// Baud Rate
         /// </summary>
         public string BaudRate { get; set; }
 
@@ -222,7 +222,7 @@
             }
             else
             {
-                this.BaudRate = "111865";
+                this.BaudRate = defaultBaudRate;
             }
         }
 

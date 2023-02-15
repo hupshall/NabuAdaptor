@@ -26,7 +26,7 @@
         private int port;
 
         /// <summary>
-        /// 
+        /// logger class
         /// </summary>
         private Logger logger;
 
@@ -35,6 +35,11 @@
         /// </summary>
         public Stream NabuStream { get; private set; }
 
+        /// <summary>
+        /// Sets up the TCPIP listener singleton
+        /// </summary>
+        /// <param name="port">specified port</param>
+        /// <returns>a TCPIP Listener</returns>
         private static TcpListener GetListener(int port)
         {
             if (tcpListener == null)
