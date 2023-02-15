@@ -1,6 +1,7 @@
 ﻿namespace NabuAdaptor
 {
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
     using System.Windows.Input;
 
@@ -21,10 +22,12 @@
             // Create the server
             Server server = new Server(settings);
 
+            CancellationTokenSource source = new CancellationTokenSource();
+
             // Run the server
             do
             {
-                Task task = Task.Run(() => server.RunServer());
+                Task task = Task.Run(() => server.RunServer(source.Token));
 
                 do
                 {
@@ -34,6 +37,7 @@
                         switch (Console.ReadKey(true).Key)
                         {
                             case ConsoleKey.Enter:
+                                source.Cancel();
                                 System.Environment.Exit(0);
                                 break;
                         }

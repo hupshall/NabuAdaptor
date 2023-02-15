@@ -5,13 +5,17 @@
     using System.IO;
     using System.Linq;
 
+    /// <summary>
+    /// Class to manage nabu segments (programs in a cycle).
+    /// Code to create the time segment on the fly using the local computers clock
+    /// </summary>
     public static class SegmentManager
     {
         /// <summary>
         /// Create the time segment that the nabu can parse.
         /// </summary>
         /// <returns></returns>
-        public static NabuPak CreateTimePak()
+        public static NabuSegment CreateTimeSegment()
         {
             DateTime dateTime = DateTime.Now;
 
@@ -49,16 +53,16 @@
             list.Add(crcData[0]);
             list.Add(crcData[1]);
 
-            return new NabuPak(new List<NabuSegment> { new NabuSegment(0, list.ToArray()) }.ToArray(), "0x7FFFFF");
+            return new NabuSegment(new List<NabuPacket> { new NabuPacket(0, list.ToArray()) }.ToArray(), "0x7FFFFF");
         }
 
         /// <summary>
-        /// Load the segments imbedded in the PAK file
+        /// Load the packets inside of the segment file (original Nabu cycle packet)
         /// </summary>
-        /// <param name="pakName">Name of the PAK file</param>
+        /// <param name="segmentName">Name of the segment file</param>
         /// <param name="data">contents of the file as a byte array</param>
-        /// <returns>Nabu Pak object which contains the segments</returns>
-        public static NabuPak LoadSegments(string pakName, byte[] data)
+        /// <returns>Nabu Segment object which contains the packets</returns>
+        public static NabuSegment LoadPackets(string segmentName, byte[] data, Logger logger)
         {
             using (MemoryStream memoryStream = new MemoryStream(data))
             {
@@ -67,39 +71,39 @@
                     throw new ArgumentOutOfRangeException("data", "File too large");
                 }
 
-                List<NabuSegment> list = new List<NabuSegment>();
+                List<NabuPacket> list = new List<NabuPacket>();
 
-                byte segmentNumber = 0;
+                byte packetNumber = 0;
 
-                // Ok, read in the PAK file into it's constituent segments
+                // Ok, read in the segment file into it's constituent packets
                 while (memoryStream.Position < memoryStream.Length)
                 {
                     // Get the first two bytes, this is the length of this segment
                     int segmentLength = memoryStream.ReadByte() + (memoryStream.ReadByte() << 8);
 
-                    if (segmentLength > 0 && segmentLength <= NabuSegment.MaxSegmentSize)
+                    if (segmentLength > 0 && segmentLength <= NabuPacket.MaxPacketSize)
                     {
                         // ok, Read this segment
                         byte[] segmentData = new byte[segmentLength];
                         memoryStream.Read(segmentData, 0, segmentLength);
-                        NabuSegment segment = new NabuSegment(segmentNumber, segmentData);
-                        ValidateSegment(segment.Data);
-                        list.Add(segment);
-                        segmentNumber++;
+                        NabuPacket packet = new NabuPacket(packetNumber, segmentData);
+                        ValidatePacket(packet.Data, logger);
+                        list.Add(packet);
+                        packetNumber++;
                     }
                 }
 
-                return new NabuPak(list.ToArray(), pakName);
+                return new NabuSegment(list.ToArray(), segmentName);
             }
         }
 
         /// <summary>
-        /// Create segments for a compiled program
+        /// Create packets object for a compiled program
         /// </summary>
-        /// <param name="pakName">name of pak file</param>
+        /// <param name="segmentName">name of segment file</param>
         /// <param name="data">binary data to make into segments</param>
-        /// <returns></returns>
-        public static NabuPak CreateSegments(string pakName, byte[] data)
+        /// <returns>Nabu Segment object which contains the packets</returns>
+        public static NabuSegment CreatePackets(string segmentName, byte[] data)
         {
             using (MemoryStream memoryStream = new MemoryStream(data))
             {
@@ -108,13 +112,13 @@
                    throw new ArgumentOutOfRangeException("data", "File too large");
                 }
 
-                List<NabuSegment> segments = new List<NabuSegment>();
+                List<NabuPacket> packets = new List<NabuPacket>();
 
                 byte segmentNumber = 0;
                 while (true)
                 {
                     long offset = memoryStream.Position;
-                    byte[] buffer = new byte[NabuSegment.SegmentDataLength];
+                    byte[] buffer = new byte[NabuPacket.PacketDataLength];
                     int bytesRead = memoryStream.Read(buffer, 0, buffer.Length);
                     if (bytesRead == 0)
                     {
@@ -126,22 +130,22 @@
                     bool lastSegment = memoryStream.Position == memoryStream.Length;
 
                     // Create the segment
-                    segments.Add(new NabuSegment(segmentNumber, CreateSegment(segmentNumber, (ushort)offset, lastSegment, buffer.Take(bytesRead).ToArray()))); 
+                    packets.Add(new NabuPacket(segmentNumber, CreatePacket(segmentNumber, (ushort)offset, lastSegment, buffer.Take(bytesRead).ToArray()))); 
                 } 
 
-                return new NabuPak(segments.ToArray(), pakName);
+                return new NabuSegment(packets.ToArray(), segmentName);
             }
         }
 
         /// <summary>
         /// Create an individual segment
         /// </summary>
-        /// <param name="segmentNumber">Segment number</param>
+        /// <param name="packetNumber">Segment number</param>
         /// <param name="offset">offset </param>
         /// <param name="lastSegment"></param>
         /// <param name="data"></param>
         /// <returns></returns>
-        private static byte[] CreateSegment(byte segmentNumber, ushort offset, bool lastSegment, byte[] data)
+        private static byte[] CreatePacket(byte packetNumber, ushort offset, bool lastSegment, byte[] data)
         {
             List<byte> list = new List<byte>();
 
@@ -149,7 +153,7 @@
             list.Add(0x0);
             list.Add(0x0);
             list.Add(0x1);
-            list.Add(segmentNumber);
+            list.Add(packetNumber);
 
             // Owner
             list.Add(0x1);
@@ -175,7 +179,7 @@
             }
 
             list.Add(b);
-            list.Add(segmentNumber);
+            list.Add(packetNumber);
             list.Add(0x0);
             list.Add((byte)((uint)(offset + 0x12 >> 8) & 0xFFu));
             list.Add((byte)((uint)(offset + 0x12) & 0xFFu));
@@ -192,22 +196,22 @@
         }
 
         /// <summary>
-        /// Validate the segment CRC
+        /// Validate the packet CRC
         /// </summary>
-        /// <param name="segmentData">segment data</param>
-        private static void ValidateSegment(byte[] segmentData)
+        /// <param name="packetData">segment data</param>
+        private static void ValidatePacket(byte[] packetData, Logger logger)
         {
-            byte[] data = new byte[segmentData.Length - 2];
-            Array.Copy(segmentData, data, segmentData.Length - 2);
+            byte[] data = new byte[packetData.Length - 2];
+            Array.Copy(packetData, data, packetData.Length - 2);
             byte[] crcData = CRC.CalculateCRC(data);
 
-            if (segmentData[segmentData.Length - 2] != crcData[0] || segmentData[segmentData.Length - 1] != crcData[1])
+            if (packetData[packetData.Length - 2] != crcData[0] || packetData[packetData.Length - 1] != crcData[1])
             {
-                Logger.Log($"CRC Bad, Calculated 0x{crcData[0]}, 0x{crcData[1]}, but read 0x{segmentData[segmentData.Length - 2]:X02}, 0x{segmentData[segmentData.Length - 1]:X02}", Logger.Target.file);
+                logger.Log($"CRC Bad, Calculated 0x{crcData[0]}, 0x{crcData[1]}, but read 0x{packetData[packetData.Length - 2]:X02}, 0x{packetData[packetData.Length - 1]:X02}", Logger.Target.file);
 
                 // Fix the CRC so that the nabu will load.
-                segmentData[segmentData.Length - 2] = crcData[0];
-                segmentData[segmentData.Length - 1] = crcData[1];
+                packetData[packetData.Length - 2] = crcData[0];
+                packetData[packetData.Length - 1] = crcData[1];
             }
         }
     }

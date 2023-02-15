@@ -3,61 +3,37 @@
     using System;
 
     /// <summary>
-    /// Class to define a nabu segment
+    /// Class to encapsulate a Nabu Segment
+    /// A segment is a collection of packets.  IOS requests segments, either code to execute or data to provide.
+    /// A segment number is analogous (comparable) to a filename.  It's just a compact way of making a directory entry.
     /// </summary>
     public class NabuSegment
     {
         /// <summary>
-        /// This is the size of a nabu header
+        /// List of all the packets in this segment
         /// </summary>
-        public const int SegmentHeaderLength = 0x10;
-
-        /// <summary>
-        /// This is the maximum size of data that can be in a nabu segment
-        /// </summary>
-        public const int SegmentDataLength = 0x3E1;
-
-        /// <summary>
-        /// This is the size of the CRC at the end of the segment
-        /// </summary>
-        public const int CrcLength = 0x2;
-
-        /// <summary>
-        /// The maximum size of a nabu segment, header + data + crc
-        /// </summary>
-        public static int MaxSegmentSize
+        public NabuPacket[] Packets
         {
-            get
-            {
-                return SegmentHeaderLength + SegmentDataLength + CrcLength;
-            }
+            get; set;
         }
 
         /// <summary>
-        /// Gets this segment's sequence number
+        /// Name of the segment
         /// </summary>
-        public byte SequenceNumber
+        public string Name
         {
-            get; private set;
+            get; set;
         }
 
         /// <summary>
-        /// Gets this segments data (what actually gets sent to the nabu
+        /// Initializes a new instance of the <see cref="NabuSegment"/> class.
         /// </summary>
-        public byte[] Data
+        /// <param name="packets">packets for this segment</param>
+        /// <param name="name">name of the segment</param>
+        public NabuSegment(NabuPacket[] packets, string name)
         {
-            get; private set;
-        }
-
-        /// <summary>
-        ///  Initializes a new instance of the <see cref="NabuSegment"/> class.
-        /// </summary>
-        /// <param name="sequenceNumber">Sequence number of this segment</param>
-        /// <param name="data">data for this segment</param>
-        public NabuSegment(byte sequenceNumber, byte[] data)
-        {
-            this.SequenceNumber = sequenceNumber;
-            this.Data = data;
+            this.Packets = packets;
+            this.Name = name;
         }
     }
 }

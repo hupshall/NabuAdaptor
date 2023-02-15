@@ -2,9 +2,14 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Collections.Concurrent;
+    using System.Diagnostics;
     using System.IO;
+    using System.Threading;
     using System.Linq;
     using System.Net;
+    using System.Text;
+    using System.Xml.Serialization;
 
     /// <summary>
     /// Main implementation of the Nabu server, sits and waits for the nabu to request something and then fulfills that request.
@@ -12,9 +17,20 @@
     public class Server
     {
         /// <summary>
-        /// WebClient to download pak files from cloud
+        /// Cache of loaded segments
+        /// If you don't cache this, you'll be loading in the file and parsing everything for every individual packet.
+        /// </summary>       
+        public static ConcurrentDictionary<string, NabuSegment> cache = new ConcurrentDictionary<string, NabuSegment>();
+
+        /// <summary>
+        /// Logger
         /// </summary>
-        private static WebClient webClient;
+        private Logger logger;
+
+        /// <summary>
+        /// 
+        /// </summary>
+        private EventHandler<ProgressEventArgs> progress;
 
         /// <summary>
         /// Nabu connection
@@ -27,43 +43,39 @@
         private Settings settings;
 
         /// <summary>
-        /// Cache of loaded PAK files
-        /// If you don't cache this, you'll be loading in the file and parsing everything for every individual segment.
-        /// </summary>
-        private List<NabuPak> cache;
-
-        static Server()
-        {
-            webClient = new WebClient();
-            webClient.Headers.Add("user-agent", "Nabu Network Adapter 1.0");
-            webClient.Headers.Add("Content-Type", "application/octet-stream");
-            webClient.Headers.Add("Content-Transfer-Encoding", "binary");
-        }
-
-        /// <summary>
         ///  Initializes a new instance of the <see cref="Server"/> class.
         /// </summary>
         /// <param name="settings">server settings</param>
-        public Server(Settings settings)
+        public Server(Settings settings, EventHandler<string> logger = null, EventHandler<ProgressEventArgs> progress = null)
         {
             this.settings = settings;
-            this.cache = new List<NabuPak>();
+
+            if (logger != null)
+            {
+                this.logger = new Logger(logger);
+            }
+            else
+            {
+                this.logger = new Logger();
+            }
+
+            this.progress = progress;
         }
 
         /// <summary>
         /// Start the server
         /// </summary>
-        public void StartServer()
+        private void StartServer()
         {
             this.StopServer();
-
+            
             switch (this.settings.OperatingMode)
             {
                 case Settings.Mode.Serial:
-                    this.connection = new SerialConnection(this.settings.Port);
+                    this.connection = new SerialConnection(this.settings, this.logger);
                     break;
                 case Settings.Mode.TCPIP:
-                    this.connection = new TcpConnection(Int32.Parse(this.settings.Port));
+                    this.connection = new TcpConnection(Int32.Parse(this.settings.Port), this.logger);
                     break;
             }
 
@@ -84,69 +96,148 @@
         /// <summary>
         /// Simple server to handle Nabu requests
         /// </summary>
-        public void RunServer()
+        public void RunServer(CancellationToken token)
         {
-            try
+            do
             {
-                bool initialized = false;
-                bool err = false;
-
-                // Start the server first
-                this.StartServer();
-
-                Logger.Log("Listening for Nabu", Logger.Target.file);
-                while (this.connection != null && this.connection.Connected && !err)
+                try
                 {
-                    byte b = this.ReadByte();
-                    switch (b)
+                    //bool initialized = false;
+                    bool err = false;
+
+                    // Start the server first
+                    try
                     {
-                        case 0x85: // Channel
-                            this.WriteBytes(0x10, 0x6);
-                            Logger.Log($"Received Channel {this.ReadByte() + (this.ReadByte() << 8):X8}", Logger.Target.file);
-                            this.WriteBytes(0xE4);
-                            break;
-                        case 0x84: // File Transfer
-                            this.HandleFileRequest();
-                            break;
-                        case 0x83:
-                            if (!initialized)
-                            {
-                                this.InitializeNabu(this.settings.AskForChannel);
-                            }
-                            else
-                            {
-                                this.WriteBytes(0x10, 0x6, 0xE4);
-                            }
-                            break;
-                        case 0x82:
-                            this.WriteBytes(0x10, 0x6);
-                            break;
-                        case 0x81:
-                            this.WriteBytes(0x10, 0x6);
-                            break;
-                        case 0x1E:
-                            this.WriteBytes(0x10, 0xE1);
-                            break;
-                        case 0x5:
-                            this.WriteBytes(0xE4);
-                            break;
-                        case 0xF:
-                            break;
-                        case 0xFF:
-                            // Well, we are reading garbage, socket has probably closed, quit this loop
-                            err = true;
-                            break;                            
+                        this.StartServer();
+                    }
+                    catch (Exception e)
+                    {
+                        if (e is System.IO.IOException || e is System.UnauthorizedAccessException)
+                        {
+                            this.logger.Log("Invalid PORT settings, Stop the server and select the correct port", Logger.Target.console);
+                            return;
+                        }
+
+                        err = true;
+                    }
+
+                    this.logger.Log("Listening for NABU", Logger.Target.file);
+                    while (this.connection != null && this.connection.Connected && !err && !token.IsCancellationRequested)
+                    {
+                        byte b = this.ReadByte();
+                        switch (b)
+                        {
+                            case 0x8F:
+                                this.logger.Log($"{(this.ReadByte() << 8):X8}", Logger.Target.console);
+                                this.WriteBytes(0xE4);
+                                break;
+                            case 0x85: // Channel
+                                this.WriteBytes(0x10, 0x6);
+                                int channel = this.ReadByte() + (this.ReadByte() << 8);
+                                this.logger.Log($"Received Channel {channel:X8}", Logger.Target.file);
+                                this.WriteBytes(0xE4);
+                                break;
+                            case 0x84: // File Transfer
+                                this.HandleFileRequest();
+                                break;
+                            case 0x83:
+                                 this.WriteBytes(0x10, 0x6, 0xE4);
+                                break;
+                            case 0x82:
+                                this.ConfigureChannel(this.settings.AskForChannel);
+                                break;
+                            case 0x81:
+                                this.WriteBytes(0x10, 0x6);
+                                break;
+                            case 0x20:
+                                // Send the main menu
+                                this.SendMainMenu();
+                                break;
+                            case 0x21:
+                                // send specified menu
+                                this.SendSubMenu();
+                                break;
+                            case 0x1E:
+                                this.WriteBytes(0x10, 0xE1);
+                                break;
+                            case 0x5:
+                                this.WriteBytes(0xE4);
+                                break;
+                            case 0xF:
+                                break;
+                            case 0xFF:
+                                // Well, we are reading garbage, socket has probably closed, quit this loop
+                                err = true;
+                                break;
+                            default:
+                                this.logger.Log($"Unknown command {b:X8}", Logger.Target.console);
+                                this.WriteBytes(0x10, 0x6);
+                                break;
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
+                catch (Exception ex)
+                {
+                    this.logger.Log($"Exception {ex.Message}", Logger.Target.file);
+                }
+                finally
+                {
+                    this.StopServer();
+                }
+            } while (!token.IsCancellationRequested);
+
+        }
+
+        private void SendSubMenu()
+        {
+            byte menu = this.ReadByte();
+
+            List<string> names = new List<string>();
+
+            // send down the specified menu
+            switch (menu)
             {
-                Logger.Log($"Exception {ex.Message}", Logger.Target.file);
+                case 0:
+                    IEnumerable<Cycle> cycles = from item in this.settings.Cycles where item.TargetType == Cycle.Target.Cycle select item;
+                    names = cycles.Select(cycle => cycle.Name).ToList();
+                    break;
+                case 1:
+                    IEnumerable<Cycle> programs = (from item in this.settings.Cycles where item.TargetType == Cycle.Target.Program select item).OrderBy(x => x.Name).ToList();
+                    names = programs.Select(cycle => cycle.Name).ToList();
+                    break;
+                case 2:
+                    IEnumerable<Cycle> arcade = (from item in this.settings.Cycles where item.TargetType == Cycle.Target.Arcade select item).OrderBy(x => x.Name).ToList();
+                    names = arcade.Select(cycle => cycle.Name).ToList();
+                    break;
             }
-            finally
+
+            if (names.Any())
             {
-                this.StopServer();
-            }            
+                foreach (string name in names)
+                {
+                    this.WriteBytes(this.LatinToAscii($"{name}\r"));
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        private void SendMainMenu()
+        {
+        }
+
+        public byte[] LatinToAscii(string str)
+        {
+            List<byte> data = new List<byte>();
+
+            foreach (byte b in System.Text.Encoding.UTF8.GetBytes(str.ToCharArray()))
+            {
+
+                data.Add(b);
+            }
+
+            return data.ToArray();
         }
 
         /// <summary>
@@ -157,70 +248,89 @@
             this.WriteBytes(0x10, 0x6);
 
             // Ok, get the requested packet and segment info
-            int segmentNumber = this.GetRequestedSegment();          
-            int pakFileName = this.GetRequestedPakFile();
+            int packetNumber = this.GetRequestedPacket();          
+            int segmentNumber = this.GetRequestedSegment();
 
-            string pakName = $"{pakFileName:X06}";
-            Logger.Log($"Nabu requesting file {pakFileName:X06} and segment {segmentNumber:X06}", Logger.Target.file);
-            Spinner.Turn(pakFileName);
+            string segmentName = $"{segmentNumber:X06}";
+            this.logger.Log($"NABU requesting segment {segmentNumber:X06} and packet {packetNumber:X06}", Logger.Target.file);
 
             // ok
             this.WriteBytes(0xE4);
-            NabuPak nabuPak = null;
+            NabuSegment segment = null;
 
-            if (pakFileName == 0x7FFFFF)
+            if (segmentNumber == 0x7FFFFF)
             {
-                nabuPak = SegmentManager.CreateTimePak();
+                segment = SegmentManager.CreateTimeSegment();
             }
             else
             {
-                nabuPak = this.cache.FirstOrDefault((NabuPak x) => x.Name == pakName);
-
-                if (nabuPak == null)
+                if (cache.ContainsKey(segmentName))
                 {
-                    if (!string.IsNullOrWhiteSpace(settings.Url))
-                    {
-                        string downloadUrl = string.Empty;
-                        if (!settings.Url.EndsWith("/"))
-                        {
-                            downloadUrl = $"{settings.Url}/{pakName}.pak";
-                        }
-                        else
-                        {
-                            downloadUrl = $"{settings.Url}{pakName}.pak";
-                        }
+                    segment = cache[segmentName];
+                }
 
-                        byte[] data = webClient.DownloadData(downloadUrl);
-                        nabuPak = SegmentManager.LoadSegments(pakName, data);
-                        this.cache.Add(nabuPak);
+                if (segment == null)
+                {
+                    // If the path starts with http, go cloud - otherwise local
+                    ILoader loader;
+                    if (this.settings.Path.ToLowerInvariant().StartsWith("http"))
+                    {
+                        loader = new WebLoader();
                     }
                     else
                     {
-                        string pakFilename = Path.Combine(this.settings.Directory, $"{pakName}.pak");
-                        string nabuFilename = Path.Combine(this.settings.Directory, $"{pakName}.nabu");
+                        loader = new LocalLoader();
+                    }
 
-                        if (File.Exists(pakFilename))
+                    // if the path ends with .nabu:
+                    byte[] data = null;
+
+                    if (this.settings.Path.ToLowerInvariant().EndsWith(".nabu") && segmentNumber == 1)
+                    {
+                        if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            nabuPak = SegmentManager.LoadSegments(pakName, File.ReadAllBytes(pakFilename));
-                            this.cache.Add(nabuPak);
+                            this.logger.Log($"Loading NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
+
+                            segment = SegmentManager.CreatePackets(segmentName, data);
                         }
-                        else if (File.Exists(nabuFilename))
+                    }
+                    else if (this.settings.Path.ToLowerInvariant().EndsWith(".pak") && segmentNumber == 1)
+                    {
+                        if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            nabuPak = SegmentManager.CreateSegments(pakName, File.ReadAllBytes(nabuFilename));
-                            this.cache.Add(nabuPak);
+                            this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
+
+                            segment = SegmentManager.LoadPackets(segmentName, data, this.logger);
                         }
-                        else
+                    }
+                    else
+                    {
+                        string directory;
+
+                        if (loader.TryGetDirectory(this.settings.Path, out directory))
                         {
-                            nabuPak = null;
+                            string fileName = $"{directory}/{segmentName}.nabu";
+
+                            if (loader.TryGetData(fileName, out data))
+                            {
+                                this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {fileName}", Logger.Target.console);
+
+                                segment = SegmentManager.CreatePackets(segmentName, data);
+                            }
+                            else if (loader.TryGetData($"{directory}/{segmentName}.pak", out data))
+                            {
+                                this.logger.Log($"loading NABU segment {segmentNumber:X06} from {directory}/{segmentName}.pak", Logger.Target.console);
+                                segment = SegmentManager.LoadPackets(segmentName, data, this.logger);
+                            }
                         }
                     }
                     
-                    if (nabuPak == null)
+                    if (segment == null)
                     {
-                        if (pakFileName == 1)
+                        if (segmentNumber == 1)
                         {
                             // Nabu can't do anything without an initial pack - throw and be done.
-                            throw new FileNotFoundException($"Initial nabu file of {pakName} was not found, fix this");
+                            throw new FileNotFoundException($"Initial NABU file of {segmentName} was not found, fix this");
                         }
 
                         // File not found, write unauthorized
@@ -228,11 +338,15 @@
                         this.ReadByte(0x10);
                         this.ReadByte(0x6);
                     }
+                    else
+                    {
+                        cache.TryAdd(segmentName, segment);
+                    }
                 }                
             }
 
             // Send the requested segment of the pack
-            if (nabuPak != null && segmentNumber <= nabuPak.Segments.Length)
+            if (segment != null && packetNumber <= segment.Packets.Length)
             {
                 this.WriteBytes(0x91);
                 byte b = this.ReadByte();
@@ -243,8 +357,18 @@
                 }
 
                 this.ReadByte(0x6);
-                this.SendSegment(nabuPak.Segments[segmentNumber]);
+                this.SendPacket(segment.Packets[packetNumber]);
                 this.WriteBytes(0x10, 0xE1);
+
+                if (this.progress != null)
+                {
+                    ProgressEventArgs args = new ProgressEventArgs(segmentNumber, packetNumber, segment.Packets.Length);
+                    progress(this, args);
+                }
+                else
+                {
+                    Spinner.Turn(segmentNumber);
+                }
             }
         }
 
@@ -258,37 +382,30 @@
         }
 
         /// <summary>
-        /// Get the requested
+        /// Get the requested packet
         /// </summary>
-        /// <returns></returns>
-        private byte GetRequestedSegment()
+        /// <returns>requested packet</returns>
+        private byte GetRequestedPacket()
         {
             return this.ReadByte();
         }
 
         /// <summary>
-        /// Send the segment to the nabu
+        /// Send the packet to the nabu
         /// </summary>
-        /// <param name="segment">segment to send</param>
-        private void SendSegment(NabuSegment segment)
+        /// <param name="packet">packet to send</param>
+        private void SendPacket(NabuPacket packet)
         {
-            byte[] array = segment.Data;
-            foreach (byte b in array)
-            {
-                // need to escape 0x10
-                if (b == 0x10) 
-                {
-                    this.connection.NabuStream.Write(new byte[1] { 0x10 }, 0, 1);
-                }
-                this.connection.NabuStream.Write(new byte[1] { b }, 0, 1);
-            }
+            byte[] array = packet.EscapedData;
+
+            this.connection.NabuStream.Write(array, 0, array.Length);
         }
 
         /// <summary>
-        /// Get the requested pak file name
+        /// Get the requested segment name
         /// </summary>
-        /// <returns>requested pack file</returns>
-        private int GetRequestedPakFile()
+        /// <returns>requested segment file</returns>
+        private int GetRequestedSegment()
         {
             byte b1 = this.ReadByte();
             byte b2 = this.ReadByte();
@@ -315,23 +432,6 @@
         }
 
         /// <summary>
-        /// Read a byte - but throw if the byte we read is not what we expected
-        /// </summary>
-        /// <param name="validValues">list of possible values</param>
-        /// <returns>the read byte</returns>
-        private byte ReadByte(byte[] validValues)
-        {
-            byte num = this.ReadByte();
-
-            if (validValues.Contains(num))
-            {
-                return num;
-            }
-
-            throw new Exception($"Read {num:X02} but expected {BitConverter.ToString(validValues)}");
-        }
-
-        /// <summary>
         /// Read a single byte from the stream
         /// </summary>
         /// <returns>read byte</returns>
@@ -340,26 +440,31 @@
             return (byte)this.connection.NabuStream.ReadByte();
         }
 
-        /// <summary>
-        /// Initialize the nabu and prompt for channel if requested
-        /// </summary>
-        /// <param name="askForChannel">flag for channel prompt</param>
-        private void InitializeNabu(bool askForChannel)
+        private byte[] ReadBytes()
         {
-            this.WriteBytes(0x10, 0x6, 0xE4);
-            if (this.ReadByte() == 0x82) 
+            byte[] buffer = new byte[1024];
+
+            this.connection.NabuStream.Read(buffer, 0, 1024);
+            return buffer;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="askForChannel"></param>
+        private void ConfigureChannel(bool askForChannel)
+        {
+            this.WriteBytes(0x10, 0x6);
+            byte[] temp = this.ReadBytes();
+
+            if (!askForChannel)
             {
-                this.WriteBytes(0x10, 0x6);
-                this.ReadByte(0x1);
-                if (!askForChannel)
-                {
-                    this.WriteBytes(0x1F, 0x10, 0xE1); 
-                }
-                else
-                {
-                    Logger.Log("Asking for channel", Logger.Target.file);
-                    this.WriteBytes(0x9F, 0x10, 0xE1);
-                }
+                this.WriteBytes(0x1F, 0x10, 0xE1);
+            }
+            else
+            {
+                this.logger.Log("Asking for channel", Logger.Target.file);
+                this.WriteBytes(0xFF, 0x10, 0xE1);
             }
         }
     }

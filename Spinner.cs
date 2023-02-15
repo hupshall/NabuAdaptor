@@ -10,9 +10,9 @@ namespace NabuAdaptor
     {
         static int counter = 0;
 
-        public static void Turn(int filename)
+        public static void Turn(int segment)
         {
-            string prefix = $"Nabu requesting file {filename:X06}";
+            string prefix = $"Nabu requesting segment {segment:X06}";
             
             counter++;
             switch (counter % 4)

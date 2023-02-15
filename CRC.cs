@@ -41,7 +41,7 @@
         /// Calculate the CRC based on the passed in byte array
         /// </summary>
         /// <param name="bytes">data to calculate the CRC</param>
-        /// <returns>Upper and lower bytes for use with nabu paks</returns>
+        /// <returns>Upper and lower bytes for use with nabu packets</returns>
         public static byte[] CalculateCRC(byte[] bytes)
         {
             ushort seed = 0xFFFF;
