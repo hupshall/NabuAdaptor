@@ -1,4 +1,28 @@
-﻿namespace NabuAdaptor
+﻿// BSD 2-Clause License
+//
+// Copyright(c) 2022, Huw Upshall
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED.IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+namespace NabuAdaptor
 {
     using System;
     using System.Collections.Generic;
@@ -102,7 +126,6 @@
             {
                 try
                 {
-                    //bool initialized = false;
                     bool err = false;
 
                     // Start the server first
@@ -112,13 +135,13 @@
                     }
                     catch (Exception e)
                     {
+                        err = true;
+
                         if (e is System.IO.IOException || e is System.UnauthorizedAccessException)
                         {
                             this.logger.Log("Invalid PORT settings, Stop the server and select the correct port", Logger.Target.console);
                             return;
                         }
-
-                        err = true;
                     }
 
                     this.logger.Log("Listening for NABU", Logger.Target.file);
@@ -128,7 +151,6 @@
                         switch (b)
                         {
                             case 0x8F:
-                                this.logger.Log($"{(this.ReadByte() << 8):X8}", Logger.Target.console);
                                 this.WriteBytes(0xE4);
                                 break;
                             case 0x85: // Channel
@@ -251,8 +273,7 @@
                     {
                         if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            this.logger.Log($"Loading NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
-
+                            this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
                             segment = SegmentManager.CreatePackets(segmentName, data);
                         }
                     }
@@ -260,8 +281,7 @@
                     {
                         if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
-
+                            this.logger.Log($"Loading NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
                             segment = SegmentManager.LoadPackets(segmentName, data, this.logger);
                         }
                     }
@@ -271,12 +291,9 @@
 
                         if (loader.TryGetDirectory(this.settings.Path, out directory))
                         {
-                            string fileName = $"{directory}/{segmentName}.nabu";
-
-                            if (loader.TryGetData(fileName, out data))
+                            if (loader.TryGetData($"{directory}/{segmentName}.nabu", out data))
                             {
-                                this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {fileName}", Logger.Target.console);
-
+                                this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {$"{directory}/{segmentName}.nabu"}", Logger.Target.console);
                                 segment = SegmentManager.CreatePackets(segmentName, data);
                             }
                             else if (loader.TryGetData($"{directory}/{segmentName}.pak", out data))
@@ -291,7 +308,7 @@
                     {
                         if (segmentNumber == 1)
                         {
-                            // Nabu can't do anything without an initial pack - throw and be done.
+                            // NABU can't do anything without an initial segment - throw and be done.
                             throw new FileNotFoundException($"Initial NABU file of {segmentName} was not found, fix this");
                         }
 
@@ -358,9 +375,7 @@
         /// <param name="packet">packet to send</param>
         private void SendPacket(NabuPacket packet)
         {
-            byte[] array = packet.EscapedData;
-
-            this.connection.NabuStream.Write(array, 0, array.Length);
+            this.WriteBytes(packet.EscapedData);
         }
 
         /// <summary>
