@@ -702,15 +702,6 @@ namespace NabuAdaptor.FileStoreExtensions
                     nabuFileHandle.Index = fileInfo.Length - offset;
                 }
 
-                if (nabuFileHandle.Index < 0)
-                {
-                    nabuFileHandle.Index = 0L;
-                }
-                else if (nabuFileHandle.Index > fileInfo.Length)
-                {
-                    nabuFileHandle.Index = fileInfo.Length;
-                }
-
                 this.server.Connection.NabuStream.WriteInt((int)nabuFileHandle.Index);
             }
             else
