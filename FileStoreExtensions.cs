@@ -227,7 +227,7 @@ namespace NabuAdaptor.FileStoreExtensions
                 server.Logger.Log($"FileHandleSize Requested file handle: {fileHandle:X06} but it was not found, returning -1", Logger.Target.console);
                 this.server.Connection.NabuStream.WriteInt(-1);
             }
-}
+    }
 
         /// <summary>
         /// File Handle Read
