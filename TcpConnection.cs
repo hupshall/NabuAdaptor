@@ -129,7 +129,6 @@ namespace NabuAdaptor
             {
                 this.tcpClient.GetStream().Close();
                 this.tcpClient.Close();
-                //this.tcpClient.Dispose();
             }
         }
     }

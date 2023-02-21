@@ -25,12 +25,8 @@
 namespace NabuAdaptor
 {
     using System;
-    using System.Collections.Generic;
-    using System.Linq;
     using System.Net;
-    using System.Text;
-    using System.Threading.Tasks;
-
+    
     /// <summary>
     /// Class to load nabu files on the web
     /// </summary>

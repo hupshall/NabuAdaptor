@@ -27,13 +27,8 @@ namespace NabuAdaptor
     using System;
     using System.Collections.Generic;
     using System.Collections.Concurrent;
-    using System.Diagnostics;
     using System.IO;
     using System.Threading;
-    using System.Linq;
-    using System.Net;
-    using System.Text;
-    using System.Xml.Serialization;
 
     /// <summary>
     /// Main implementation of the Nabu server, sits and waits for the nabu to request something and then fulfills that request.
@@ -49,7 +44,11 @@ namespace NabuAdaptor
         /// <summary>
         /// Logger
         /// </summary>
-        private Logger logger;
+        public Logger Logger
+        {
+            get;
+            set;
+        }
 
         /// <summary>
         /// Progress event handler (for UI scenarios)
@@ -59,7 +58,18 @@ namespace NabuAdaptor
         /// <summary>
         /// Nabu connection
         /// </summary>
-        private IConnection connection;
+        public IConnection Connection
+        {
+            get; set;
+        }
+
+        /// <summary>
+        /// Modules to handle non-standard NABU op-codes.
+        /// </summary>
+        public List<IServerExtension> Extensions
+        {
+            get; set;
+        }
 
         /// <summary>
         /// Server settings
@@ -74,13 +84,13 @@ namespace NabuAdaptor
         {
             this.settings = settings;
 
-            if (logger != null)
+            if (this.Logger != null)
             {
-                this.logger = new Logger(logger);
+                this.Logger = new Logger(logger);
             }
             else
             {
-                this.logger = new Logger();
+                this.Logger = new Logger();
             }
 
             this.progress = progress;
@@ -96,14 +106,16 @@ namespace NabuAdaptor
             switch (this.settings.OperatingMode)
             {
                 case Settings.Mode.Serial:
-                    this.connection = new SerialConnection(this.settings, this.logger);
+                    this.Connection = new SerialConnection(this.settings, this.Logger);
                     break;
                 case Settings.Mode.TCPIP:
-                    this.connection = new TcpConnection(Int32.Parse(this.settings.Port), this.logger);
+                    this.Connection = new TcpConnection(Int32.Parse(this.settings.Port), this.Logger);
                     break;
             }
 
-            this.connection.StartServer();
+            this.Connection.StartServer();
+            this.Extensions = new List<IServerExtension>();
+            this.Connection.StartServer();
         }
 
         /// <summary>
@@ -111,9 +123,9 @@ namespace NabuAdaptor
         /// </summary>
         public void StopServer()
         {
-            if (this.connection != null && this.connection.Connected)
+            if (this.Connection != null && this.Connection.Connected)
             {
-                this.connection.StopServer();
+                this.Connection.StopServer();
             }
         }
 
@@ -139,24 +151,25 @@ namespace NabuAdaptor
 
                         if (e is System.IO.IOException || e is System.UnauthorizedAccessException)
                         {
-                            this.logger.Log("Invalid PORT settings, Stop the server and select the correct port", Logger.Target.console);
+                            this.Logger.Log("Invalid PORT settings, Stop the server and select the correct port", Logger.Target.console);
                             return;
                         }
                     }
 
-                    this.logger.Log("Listening for NABU", Logger.Target.file);
-                    while (this.connection != null && this.connection.Connected && !err && !token.IsCancellationRequested)
+                    this.Logger.Log("Listening for NABU", Logger.Target.file);
+                    while (this.Connection != null && this.Connection.Connected && !err && !token.IsCancellationRequested)
                     {
                         byte b = this.ReadByte();
                         switch (b)
                         {
                             case 0x8F:
+                                this.ReadByte();
                                 this.WriteBytes(0xE4);
                                 break;
                             case 0x85: // Channel
                                 this.WriteBytes(0x10, 0x6);
                                 int channel = this.ReadByte() + (this.ReadByte() << 8);
-                                this.logger.Log($"Received Channel {channel:X8}", Logger.Target.file);
+                                this.Logger.Log($"Received Channel {channel:X8}", Logger.Target.file);
                                 this.WriteBytes(0xE4);
                                 break;
                             case 0x84: // File Transfer
@@ -171,14 +184,6 @@ namespace NabuAdaptor
                             case 0x81:
                                 this.WriteBytes(0x10, 0x6);
                                 break;
-                            case 0x20:
-                                // Send the main menu - Prototype
-                                this.SendMainMenu();
-                                break;
-                            case 0x21:
-                                // send specified menu - Prototype
-                                this.SendSubMenu();
-                                break;
                             case 0x1E:
                                 this.WriteBytes(0x10, 0xE1);
                                 break;
@@ -192,15 +197,29 @@ namespace NabuAdaptor
                                 err = true;
                                 break;
                             default:
-                                this.logger.Log($"Unknown command {b:X8}", Logger.Target.console);
-                                this.WriteBytes(0x10, 0x6);
+                                bool completed = false;
+
+                                foreach (IServerExtension extension in this.Extensions)
+                                {
+                                    if (extension.TryProcessCommand(b))
+                                    {
+                                        completed = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!completed)
+                                {
+                                    this.Logger.Log($"Unknown command {b:X8}", Logger.Target.console);
+                                    this.WriteBytes(0x10, 0x6);
+                                }
                                 break;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    this.logger.Log($"Exception {ex.Message}", Logger.Target.file);
+                    this.Logger.Log($"Exception {ex.Message}", Logger.Target.file);
                 }
                 finally
                 {
@@ -211,17 +230,45 @@ namespace NabuAdaptor
         }
 
         /// <summary>
-        /// Prototype for headless NabuAdaptor
+        /// The the current working directory
         /// </summary>
-        private void SendSubMenu()
-        {          
+        /// <returns>the working directory</returns>
+        public string GetWorkingDirectory()
+        {
+            ILoader loader;
+
+            if (this.settings.Path.ToLowerInvariant().StartsWith("http"))
+            {
+                loader = new WebLoader();
+            }
+            else
+            {
+                loader = new LocalLoader();
+            }
+
+            string directory = string.Empty;
+
+            loader.TryGetDirectory(this.settings.Path, out directory);
+
+            return directory;
         }
 
         /// <summary>
-        /// Prototype for headless NabuAdaptor
+        /// Write the byte array to the stream
         /// </summary>
-        private void SendMainMenu()
+        /// <param name="bytes">bytes to send</param>
+        public void WriteBytes(params byte[] bytes)
         {
+            this.Connection.NabuStream.Write(bytes, 0, bytes.Length);
+        }
+
+        /// <summary>
+        /// Read a single byte from the stream
+        /// </summary>
+        /// <returns>read byte</returns>
+        public byte ReadByte()
+        {
+            return (byte)this.Connection.NabuStream.ReadByte();
         }
 
         /// <summary>
@@ -236,7 +283,7 @@ namespace NabuAdaptor
             int segmentNumber = this.GetRequestedSegment();
 
             string segmentName = $"{segmentNumber:X06}";
-            this.logger.Log($"NABU requesting segment {segmentNumber:X06} and packet {packetNumber:X06}", Logger.Target.file);
+            this.Logger.Log($"NABU requesting segment {segmentNumber:X06} and packet {packetNumber:X06}", Logger.Target.file);
 
             // ok
             this.WriteBytes(0xE4);
@@ -273,7 +320,7 @@ namespace NabuAdaptor
                     {
                         if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
+                            this.Logger.Log($"Creating NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
                             segment = SegmentManager.CreatePackets(segmentName, data);
                         }
                     }
@@ -281,8 +328,8 @@ namespace NabuAdaptor
                     {
                         if (loader.TryGetData($"{this.settings.Path}", out data))
                         {
-                            this.logger.Log($"Loading NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
-                            segment = SegmentManager.LoadPackets(segmentName, data, this.logger);
+                            this.Logger.Log($"Loading NABU segment {segmentNumber:X06} from {this.settings.Path}", Logger.Target.console);
+                            segment = SegmentManager.LoadPackets(segmentName, data, this.Logger);
                         }
                     }
                     else
@@ -293,13 +340,13 @@ namespace NabuAdaptor
                         {
                             if (loader.TryGetData($"{directory}/{segmentName}.nabu", out data))
                             {
-                                this.logger.Log($"Creating NABU segment {segmentNumber:X06} from {$"{directory}/{segmentName}.nabu"}", Logger.Target.console);
+                                this.Logger.Log($"Creating NABU segment {segmentNumber:X06} from {$"{directory}/{segmentName}.nabu"}", Logger.Target.console);
                                 segment = SegmentManager.CreatePackets(segmentName, data);
                             }
                             else if (loader.TryGetData($"{directory}/{segmentName}.pak", out data))
                             {
-                                this.logger.Log($"loading NABU segment {segmentNumber:X06} from {directory}/{segmentName}.pak", Logger.Target.console);
-                                segment = SegmentManager.LoadPackets(segmentName, data, this.logger);
+                                this.Logger.Log($"loading NABU segment {segmentNumber:X06} from {directory}/{segmentName}.pak", Logger.Target.console);
+                                segment = SegmentManager.LoadPackets(segmentName, data, this.Logger);
                             }
                         }
                     }
@@ -352,15 +399,6 @@ namespace NabuAdaptor
         }
 
         /// <summary>
-        /// Write the byte array to the stream
-        /// </summary>
-        /// <param name="bytes">bytes to send</param>
-        private void WriteBytes(params byte[] bytes)
-        {
-            this.connection.NabuStream.Write(bytes, 0, bytes.Length);
-        }
-
-        /// <summary>
         /// Get the requested packet
         /// </summary>
         /// <returns>requested packet</returns>
@@ -409,15 +447,6 @@ namespace NabuAdaptor
         }
 
         /// <summary>
-        /// Read a single byte from the stream
-        /// </summary>
-        /// <returns>read byte</returns>
-        private byte ReadByte()
-        {
-            return (byte)this.connection.NabuStream.ReadByte();
-        }
-
-        /// <summary>
         /// Read a sequence of bytes from the stream
         /// </summary>
         /// <returns>read bytes</returns>
@@ -425,7 +454,7 @@ namespace NabuAdaptor
         {
             byte[] buffer = new byte[1024];
 
-            this.connection.NabuStream.Read(buffer, 0, 1024);
+            this.Connection.NabuStream.Read(buffer, 0, 1024);
             return buffer;
         }
 
@@ -444,7 +473,7 @@ namespace NabuAdaptor
             }
             else
             {
-                this.logger.Log("Asking for channel", Logger.Target.file);
+                this.Logger.Log("Asking for channel", Logger.Target.file);
                 this.WriteBytes(0xFF, 0x10, 0xE1);
             }
         }

@@ -25,32 +25,23 @@
 namespace NabuAdaptor
 {
     using System;
-    using System.IO;
 
     /// <summary>
-    /// Interface to define a nabu to server connection type
+    /// interface to define the nabu file loader
     /// </summary>
-    public interface IConnection
+    public interface IServerExtension
     {
-        /// <summary>
-        /// Gets whether the connection is connected
-        /// </summary>
-        bool Connected { get; }
 
         /// <summary>
-        /// Gets the stream to read/write from
+        /// Try to process the command with the specified OP code
         /// </summary>
-        Stream NabuStream { get; }
+        /// <param name="opCode">OP code from the NABU</param>
+        /// <returns>true/false - if the opcode was serviced (Executed upon) in this extension</returns>
+        bool TryProcessCommand(byte opCode);
 
         /// <summary>
-        /// Stop the server
+        /// Reset this extension - some extensions may have internal state that needs to be wiped on cycle changes.
         /// </summary>
-        void StopServer();
-
-        /// <summary>
-        /// Start the server
-        /// </summary>
-        void StartServer();
-
+        void Reset();
     }
 }

@@ -46,10 +46,14 @@
   <ItemGroup>
     <Compile Include="CRC.cs" />
     <Compile Include="Cycle.cs" />
+    <Compile Include="FileDetails.cs" />
+    <Compile Include="FileStoreExtensions.cs" />
     <Compile Include="IConnection.cs" />
     <Compile Include="ILoader.cs" />
+    <Compile Include="IServerExtension.cs" />
     <Compile Include="LocalLoader.cs" />
     <Compile Include="Logger.cs" />
+    <Compile Include="NabuFileHandle.cs" />    
     <Compile Include="NabuSegment.cs" />
     <Compile Include="NabuPacket.cs" />
     <Compile Include="ProgressEventArgs.cs" />
@@ -57,6 +61,7 @@
     <Compile Include="SerialConnection.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="Settings.cs" />
+    <Compile Include="StreamExtensions.cs" />  
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Spinner.cs" />
