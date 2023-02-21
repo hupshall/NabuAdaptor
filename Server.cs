@@ -115,7 +115,7 @@ namespace NabuAdaptor
 
             this.Connection.StartServer();
             this.Extensions = new List<IServerExtension>();
-            this.Connection.StartServer();
+            this.Extensions.Add(new FileStoreExtensions.FileStoreExtensions(this));
         }
 
         /// <summary>

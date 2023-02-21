@@ -80,7 +80,7 @@ namespace NabuAdaptor
                 }
                 else
                 {
-                    directoryPath = path;
+                    directoryPath = path.Trim("/".ToCharArray());
                 }
 
                 return true;
