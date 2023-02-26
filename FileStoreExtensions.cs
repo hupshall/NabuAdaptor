@@ -341,7 +341,7 @@ namespace NabuAdaptor.FileStoreExtensions
                 bytes.InsertRange((int)index, data);
                 File.WriteAllBytes(nabuFileHandle.FullFileName, bytes.ToArray());
             }
-            else if ((nabuFileHandle.Flags & FileFlags.ReadWrite) == FileFlags.ReadWrite)
+            else 
             {
                 server.Logger.Log($"FileHandleInsert Requested handle insert on {fileHandle:X06} but it was not found", Logger.Target.console);
             }
