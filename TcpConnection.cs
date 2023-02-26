@@ -45,9 +45,9 @@ namespace NabuAdaptor
         private static TcpListener tcpListener = null;
 
         /// <summary>
-        /// TCP/IP Port
+        /// settings
         /// </summary>
-        private int port;
+        private Settings Settings { get; set; }
 
         /// <summary>
         /// logger class
@@ -98,10 +98,11 @@ namespace NabuAdaptor
         /// <summary>
         /// Initializes a new instance of the <see cref="TcpConnection"/> class.
         /// </summary>
-        /// <param name="port">TCPIP port to listen to</param>
-        public TcpConnection(int port, Logger logger)
+        /// <param name="settings">Settings object</param>
+        /// <param name="logger">Logger</param>
+        public TcpConnection(Settings settings, Logger logger)
         {
-            this.port = port;
+            this.Settings = settings;
             this.logger = logger;
         }
 
@@ -112,7 +113,13 @@ namespace NabuAdaptor
         {
             this.logger.Log("Server running in TCP/IP mode", Logger.Target.console);
             this.logger.Log("Waiting for connection", Logger.Target.console);
-            this.tcpClient = GetListener(this.port).AcceptTcpClient();
+            this.tcpClient = GetListener(Int32.Parse(this.Settings.Port)).AcceptTcpClient();
+
+            if (this.Settings.TcpNoDelay)
+            {
+                this.tcpClient.NoDelay = true;
+            }
+
             this.logger.Log("Connected", Logger.Target.console);
             this.NabuStream = tcpClient.GetStream();
         }
@@ -122,7 +129,7 @@ namespace NabuAdaptor
         /// </summary>
         public void StopServer()
         {
-            GetListener(this.port).Stop();
+            GetListener(Int32.Parse(this.Settings.Port)).Stop();
             tcpListener = null;
 
             if (this.tcpClient != null)

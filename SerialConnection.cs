@@ -43,7 +43,7 @@ namespace NabuAdaptor
         /// <summary>
         /// settings
         /// </summary>
-        private Settings settings { get; set; }
+        private Settings Settings { get; set; }
 
         /// <summary>
         /// Stream used to read/write to/from nabu
@@ -74,7 +74,7 @@ namespace NabuAdaptor
         /// <param name="comPort">Com port to use</param>
         public SerialConnection(Settings settings, Logger logger)
         {
-            this.settings = settings;
+            this.Settings = settings;
             this.logger = logger;
         }
 
@@ -86,8 +86,8 @@ namespace NabuAdaptor
             this.logger.Log("Server running in Serial mode", Logger.Target.console);
             this.serialPort?.Dispose();
             this.serialPort = new SerialPort();
-            this.serialPort.PortName = this.settings.SerialPort;
-            this.serialPort.BaudRate = int.Parse(this.settings.BaudRate);
+            this.serialPort.PortName = this.Settings.SerialPort;
+            this.serialPort.BaudRate = int.Parse(this.Settings.BaudRate);
             this.serialPort.StopBits = StopBits.Two;
             this.serialPort.Parity = Parity.None;
             this.serialPort.DataBits = 8;
@@ -95,8 +95,18 @@ namespace NabuAdaptor
             this.serialPort.ReadBufferSize = 2;
             this.serialPort.WriteBufferSize = 2;
             this.serialPort.ReadTimeout = -1;
-            this.serialPort.DtrEnable = true;
-            this.serialPort.RtsEnable = true;
+
+            if (!this.Settings.DisableFlowControl)
+            {
+                this.serialPort.DtrEnable = true;
+                this.serialPort.RtsEnable = true;
+            }
+            else
+            {
+                this.serialPort.DtrEnable = false;
+                this.serialPort.RtsEnable = false;
+            }
+
             this.serialPort.Handshake = Handshake.None;
 
             this.serialPort.Open();

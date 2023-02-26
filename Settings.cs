@@ -85,6 +85,16 @@ namespace NabuAdaptor
         public string TcpipPort { get; set; }
 
         /// <summary>
+        /// 
+        /// </summary>
+        public bool DisableFlowControl { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool TcpNoDelay { get; set; }
+
+        /// <summary>
         /// Gets the port
         /// </summary>
         public string Port
@@ -248,6 +258,24 @@ namespace NabuAdaptor
             {
                 this.BaudRate = defaultBaudRate;
             }
+
+            if (settings["DisableFlowControl"] != null)
+            {
+                this.DisableFlowControl = bool.Parse(settings["DisableFlowControl"].Value);
+            }
+            else
+            {
+                this.DisableFlowControl = false;
+            }
+
+            if (settings["TcpNoDelay"] != null)
+            {
+                this.TcpNoDelay = bool.Parse(settings["TcpNoDelay"].Value);
+            }
+            else
+            {
+                this.TcpNoDelay = false;
+            }
         }
 
         /// <summary>
@@ -263,6 +291,8 @@ namespace NabuAdaptor
             this.AddOrUpdateSettings(settings, "TcpipPort", this.TcpipPort);
             this.AddOrUpdateSettings(settings, "AskForChannel", this.AskForChannel.ToString());
             this.AddOrUpdateSettings(settings, "BaudRate", this.BaudRate.ToString());
+            this.AddOrUpdateSettings(settings, "DisableFlowControl", this.DisableFlowControl.ToString());
+            this.AddOrUpdateSettings(settings, "TcpNoDelay", this.TcpNoDelay.ToString());
 
             configuration.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection(configuration.AppSettings.SectionInformation.Name);
