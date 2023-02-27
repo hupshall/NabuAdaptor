@@ -109,7 +109,7 @@ namespace NabuAdaptor
                     this.Connection = new SerialConnection(this.settings, this.Logger);
                     break;
                 case Settings.Mode.TCPIP:
-                    this.Connection = new TcpConnection(Int32.Parse(this.settings.Port), this.Logger);
+                    this.Connection = new TcpConnection(this.settings, this.Logger);
                     break;
             }
 
@@ -288,6 +288,14 @@ namespace NabuAdaptor
             // ok
             this.WriteBytes(0xE4);
             NabuSegment segment = null;
+
+            if (segmentNumber == 0x1 && packetNumber == 0x0)
+            {
+                foreach (IServerExtension extension in this.Extensions)
+                {
+                    extension.Reset();
+                }
+            }
 
             if (segmentNumber == 0x7FFFFF)
             {
